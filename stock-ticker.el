@@ -37,6 +37,16 @@
 (require 's)
 (require 'timer)
 
+(defface stock-ticker--grow-face
+  '((t :foreground "#119911"))
+  "Face for the `header-line'."
+  :group 'stock-ticker-faces)
+
+(defface stock-ticker--reduce-face
+  '((t :foreground "#cc0000"))
+  "Face for the `header-line'."
+  :group 'stock-ticker-faces)
+
 (defun stock-ticker--query (symbols)
   "Generate yql query string from list of SYMBOLS."
   (let ((query-template "select * from yahoo.finance.quotes where symbol in (\"%s\")")
@@ -61,6 +71,37 @@
                  (if change change "")
                  (if percent percent ""))))
      qs)))
+
+(defun stock-ticker--color-changes (change)
+  (let ((x (string-to-number change)))
+    (cond ((> x 0) (propertize change 'face 'stock-ticker--grow-face))
+          ((< x 0) (propertize change 'face 'stock-ticker--reduce-face))
+          (t change))))
+
+(defun stock-ticker--parse-to-string (data)
+  "Parse financial DATA into string."
+  (mapconcat
+   'identity
+   (let ((qs (assoc-default 'quote (assoc-default 'results (assoc-default 'query data)))))
+     (mapcar
+      (lambda (q)
+        (let ((percent (assoc-default 'PercentChange q))
+              (change (assoc-default 'Change q))
+              (symbol (assoc-default 'Symbol q))
+              (price (assoc-default 'LastTradePriceOnly q))
+              (name (assoc-default 'Name q))
+              (dividend (assoc-default 'DividendYield q)))
+          (format "%s: %s %s (%s)%s"
+                  (if (or
+                       (string-match "=" symbol)
+                       (string-match "\\^" symbol)
+                       (string-match "NYM" symbol)
+                       (< (length symbol) 3)) name symbol)
+                  (if price price "")
+                  (if change (stock-ticker--color-changes change) "")
+                  (if percent percent "")
+                  (if dividend (format " dividend: %s%%" dividend) ""))))
+      qs)) "\n"))
 
 ;;;###autoload
 (defgroup stock-ticker nil
@@ -106,6 +147,24 @@
                (when data
                  (progn (setq stock-ticker--current-stocks
                               (stock-ticker--parse data))))))))
+
+(defun stock-ticker--list ()
+  "Request all required stock data list and display it to temporary buffer."
+  (interactive)
+  (request
+   "http://query.yahooapis.com/v1/public/yql"
+   :params `((q . ,(stock-ticker--query stock-ticker-symbols))
+             (env . "http://datatables.org/alltables.env")
+             (format . "json"))
+   :parser 'json-read
+   :success (function*
+             (lambda (&key data &allow-other-keys)
+               (when data
+                 (switch-to-buffer "*stock-ticker*")
+                 (erase-buffer)
+                 (insert (stock-ticker--parse-to-string data))
+                 (message "Updated stock")))))
+  (message "Requesting stock..."))
 
 (defun stock-ticker--next-symbol ()
   "Cycle throug the available ticker symbols and update the mode line."
