@@ -6,7 +6,7 @@
 ;; Version: 0.1
 ;; Keywords: comms
 ;; URL: https://github.com/hagleitn/stock-ticker
-;; Package-Requires: ((s "1.9.0") (request "0.2.0"))
+;; Package-Requires: ((s "1.9.0") (request "0.2.0") (drawille "0.1"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -36,6 +36,7 @@
 (require 'request)
 (require 's)
 (require 'timer)
+(require 'drawille)
 
 (defface stock-ticker--grow-face
   '((t :foreground "#119911"))
@@ -110,8 +111,8 @@
   :prefix "stock-ticker-")
 
 ;;;###autoload
-(defcustom stock-ticker-symbols '("^gspc" "^dji" "^ixic" "^tnx"
-				  "^nya" "XAUUSD=X" "EURUSD=X")
+(defcustom stock-ticker-symbols '("^gspc" "DIA" "^ixic" "^tnx"
+                                  "^nya" "XAUUSD=X" "EURUSD=X")
   "List of ticker symbols that the mode line will cycle through."
   :type '(string)
   :group 'stock-ticker)
@@ -204,6 +205,66 @@ the mode cycles through the requested symbols at a configurable interval."
           (run-at-time nil stock-ticker-display-interval
                        'stock-ticker--next-symbol))
     (stock-ticker--update)))
+
+(defun stock-ticker--join-dots (prev new)
+  (drawille-vector-to-char
+   (vconcat (list (if (= prev 3) 1 0) (if (= new 3) 1 0)
+                  (if (= prev 2) 1 0) (if (= new 2) 1 0)
+                  (if (= prev 1) 1 0) (if (= new 1) 1 0)
+                  (if (= prev 0) 1 0) (if (= new 0) 1 0)))))
+
+(defun stock-ticker--draw-chart (prices)
+  "Draw chart for normalized PRICES list."
+  (let ((mi (apply 'min prices))
+        (ma (apply 'max prices))
+        (c 0)
+        (prev-pos nil)
+        (prev-dot nil))
+    (dotimes (number (1+ (ceiling (/ (- ma mi) 4.0))) nil)
+      (dotimes (number (length prices) nil)
+        (insert
+         (propertize (drawille-draw-dot nil 0 0)
+                     'face
+                     `((:foreground ,(face-attribute 'default :background))))))
+      (insert "\n"))
+    (cl-labels ((draw-dot (price)
+                          (let* ((dot (mod (- price mi) 4))
+                                 (y (1- (ceiling
+                                         (abs
+                                          (/ (-
+                                              (* (+ (/ ma 4)
+                                                    (if (> (mod ma 4) 0) 1 0))
+                                                 4)
+                                              (- price mi))
+                                             4.0)))))
+                                 (x (ceiling (ffloor (/ c 2)))))
+                            (artist-move-to-xy x y)
+                            (delete-char 1)
+                            (if (equal (list x y) prev-pos)
+                                (insert (stock-ticker--join-dots prev-dot dot))
+                              (insert (drawille-draw-dot nil
+                                                         (if (oddp c) 1 0)
+                                                         dot)))
+                            (sit-for 0.01)
+                            (setq prev-dot dot)
+                            (setq prev-pos (list x y)))
+                          (setq c (1+ c))))
+      (mapcar
+       #'draw-dot
+       prices))
+    (save-excursion
+      (artist-move-to-xy (+ (/ (length prices) 2) 2) 0)
+      (insert (number-to-string ma))
+      (artist-move-to-xy (+ (/ (length prices) 2) 2)
+                         (ceiling (/ (- ma mi) 4.0)))
+      (insert (number-to-string mi)))
+    (artist-forward-char 2)
+    (let ((l (car (last prices))))
+      (if (and (not (= l ma))
+               (not (= l mi)))
+          (progn
+            (insert (number-to-string l)))))
+    (end-of-buffer)))
 
 (provide 'stock-ticker)
 ;;; stock-ticker.el ends here
