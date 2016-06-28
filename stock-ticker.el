@@ -92,12 +92,14 @@
               (price (assoc-default 'LastTradePriceOnly q))
               (name (assoc-default 'Name q))
               (dividend (assoc-default 'DividendYield q)))
-          (format "%s: %s %s (%s)%s"
+          (format "%s%s: %s %s (%s)%s"
+                  name
                   (if (or
                        (string-match "=" symbol)
                        (string-match "\\^" symbol)
-                       (string-match "NYM" symbol)
-                       (< (length symbol) 3)) name symbol)
+                       (string-match "NYM" symbol))
+                      ""
+                    (format " (%s)" symbol))
                   (if price price "")
                   (if change (stock-ticker--color-changes change) "")
                   (if percent percent "")
