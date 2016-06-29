@@ -35,6 +35,7 @@
 (require 'json)
 (require 'request)
 (require 's)
+(require 'cl-lib)
 (require 'timer)
 (require 'drawille)
 
@@ -157,7 +158,7 @@
              (env . "http://datatables.org/alltables.env")
              (format . "json"))
    :parser 'json-read
-   :success (function*
+   :success (cl-function
              (lambda (&key data &allow-other-keys)
                (when data
                  (progn (setq stock-ticker--current-stocks
@@ -172,7 +173,7 @@
              (env . "http://datatables.org/alltables.env")
              (format . "json"))
    :parser 'json-read
-   :success (function*
+   :success (cl-function
              (lambda (&key data &allow-other-keys)
                (when data
                  (switch-to-buffer "*stock-ticker*")
@@ -195,7 +196,7 @@
              (env . "http://datatables.org/alltables.env")
              (format . "json"))
    :parser 'json-read
-   :success (function*
+   :success (cl-function
              (lambda (&key data &allow-other-keys)
                (when data
                  (switch-to-buffer "*stock-history*")
