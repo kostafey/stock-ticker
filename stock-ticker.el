@@ -54,6 +54,18 @@
         (symbol-string (s-join "\",\"" symbols)))
     (format query-template symbol-string)))
 
+(defun stock-ticker--history-query (symbol from-date to-date)
+  "Generate yql query string for SYMBOL history with FROM-DATE TO-DATE period."
+  (let ((query-template
+         (concat "select * from yahoo.finance.historicaldata where symbol in "
+                 "('%s') and startDate = '%s' and endDate = '%s'")))
+    (format query-template
+            symbol
+            (cl-multiple-value-bind (month day year) from-date
+              (format "%s-%02d-%02d" year month day))
+            (cl-multiple-value-bind (month day year) to-date
+              (format "%s-%02d-%02d" year month day)))))
+
 (defun stock-ticker--parse (data)
   "Parse financial DATA into list of display strings."
   (let ((qs (assoc-default 'quote (assoc-default 'results (assoc-default 'query data)))))
@@ -168,6 +180,29 @@
                  (insert (stock-ticker--parse-to-string data))
                  (message "Updated stock")))))
   (message "Requesting stock..."))
+
+(defun stock-ticker--history (symbol)
+  "Request stock data history for SYMBOL."
+  (interactive)
+  (request
+   "http://query.yahooapis.com/v1/public/yql"
+   :params `((q . ,(stock-ticker--history-query
+                    symbol
+                    (cl-multiple-value-bind (_ _ _ day month year)
+                        (decode-time (time-subtract (current-time) (days-to-time 365)))
+                      (list month day year))
+                    (calendar-current-date)))
+             (env . "http://datatables.org/alltables.env")
+             (format . "json"))
+   :parser 'json-read
+   :success (function*
+             (lambda (&key data &allow-other-keys)
+               (when data
+                 (switch-to-buffer "*stock-history*")
+                 (erase-buffer)
+                 (insert (format "%s" data))
+                 (message "Updated stock")))))
+  (message "Requesting stock history..."))
 
 (defun stock-ticker--next-symbol ()
   "Cycle throug the available ticker symbols and update the mode line."
