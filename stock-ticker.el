@@ -119,6 +119,16 @@
                   (if dividend (format " dividend: %s%%" dividend) ""))))
       qs)) "\n"))
 
+(defun stock-ticker--parse-history (data)
+  "Parse financial DATA history into string."
+  (let ((qs (assoc-default 'quote (assoc-default 'results (assoc-default 'query data)))))
+    (mapcar
+     (lambda (q)
+       (let ((close (assoc-default 'Adj_Close q))
+             (date (assoc-default 'Date q)))
+         close))
+     qs)))
+
 ;;;###autoload
 (defgroup stock-ticker nil
   "Stock ticker."
@@ -182,6 +192,8 @@
                  (message "Updated stock")))))
   (message "Requesting stock..."))
 
+(declare-function stock-ticker--draw-chart "stock-ticker")
+
 (defun stock-ticker--history (symbol)
   "Request stock data history for SYMBOL."
   (interactive)
@@ -198,11 +210,13 @@
    :parser 'json-read
    :success (cl-function
              (lambda (&key data &allow-other-keys)
-               (when data
-                 (switch-to-buffer "*stock-history*")
-                 (erase-buffer)
-                 (insert (format "%s" data))
-                 (message "Updated stock")))))
+               (stock-ticker--draw-chart
+                (mapcar 'string-to-number
+                        (subseq (when data
+                                  (message "Updated stock")
+                                  (stock-ticker--parse-history data))
+                                0 100))
+                "*stock-history*"))))
   (message "Requesting stock history..."))
 
 (defun stock-ticker--next-symbol ()
@@ -251,15 +265,27 @@ the mode cycles through the requested symbols at a configurable interval."
                   (if (= prev 1) 1 0) (if (= new 1) 1 0)
                   (if (= prev 0) 1 0) (if (= new 0) 1 0)))))
 
-(defun stock-ticker--draw-chart (prices)
+(defun stock-ticker--normalize-prices (prices)
+  (let ((mn (apply 'min prices))
+        (divisor (- (apply 'max prices) (apply 'min prices))))
+    (mapcar (lambda (p)
+              (round (- p mn)))
+            prices)))
+
+(defun stock-ticker--draw-chart (prices buffer)
   "Draw chart for normalized PRICES list."
-  (let ((mi (apply 'min prices))
-        (ma (apply 'max prices))
-        (c 0)
-        (prev-pos nil)
-        (prev-dot nil))
+  (switch-to-buffer buffer)
+  (erase-buffer)
+  (let* ((norm-prices (stock-ticker--normalize-prices prices))
+         (mi-origin (apply 'min prices))
+         (ma-origin (apply 'max prices))
+         (mi (apply 'min norm-prices))
+         (ma (apply 'max norm-prices))
+         (c 0)
+         (prev-pos nil)
+         (prev-dot nil))
     (dotimes (number (1+ (ceiling (/ (- ma mi) 4.0))) nil)
-      (dotimes (number (length prices) nil)
+      (dotimes (number (length norm-prices) nil)
         (insert
          (propertize (drawille-draw-dot nil 0 0)
                      'face
@@ -289,20 +315,23 @@ the mode cycles through the requested symbols at a configurable interval."
                           (setq c (1+ c))))
       (mapcar
        #'draw-dot
-       prices))
+       norm-prices))
     (save-excursion
-      (artist-move-to-xy (+ (/ (length prices) 2) 2) 0)
-      (insert (number-to-string ma))
-      (artist-move-to-xy (+ (/ (length prices) 2) 2)
+      (artist-move-to-xy (+ (/ (length norm-prices) 2) 2) 0)
+      (insert (number-to-string ma-origin))
+      (artist-move-to-xy (+ (/ (length norm-prices) 2) 2)
                          (ceiling (/ (- ma mi) 4.0)))
-      (insert (number-to-string mi)))
+      (insert (number-to-string mi-origin)))
     (artist-forward-char 2)
     (let ((l (car (last prices))))
-      (if (and (not (= l ma))
-               (not (= l mi)))
+      (if (and (not (= l ma-origin))
+               (not (= l mi-origin)))
           (progn
             (insert (number-to-string l)))))
     (end-of-buffer)))
+
+;; (stock-ticker--history "AAPL")
+;; (stock-ticker--history "IBM")
 
 (provide 'stock-ticker)
 ;;; stock-ticker.el ends here
