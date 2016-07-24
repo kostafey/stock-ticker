@@ -202,9 +202,8 @@
 
 (declare-function stock-ticker--draw-chart "stock-ticker")
 
-(defun stock-ticker--history (symbol)
-  "Request stock data history for SYMBOL."
-  (interactive)
+(defun stock-ticker--request-history (symbol handler)
+  "Request stock data history for SYMBOL and process it by HANDLER."
   (request
    "http://query.yahooapis.com/v1/public/yql"
    :params `((q . ,(stock-ticker--history-query
@@ -216,17 +215,24 @@
              (env . "http://datatables.org/alltables.env")
              (format . "json"))
    :parser 'json-read
-   :success (cl-function
-             (lambda (&key data &allow-other-keys)
-               (stock-ticker--draw-chart
-                (when data
-                  (message "Updated stock")
-                  (let* ((parsed-data (stock-ticker--parse-history data))
-                         (ln (length parsed-data)))
-                    ;; Get last 200 days data
-                    (subseq (reverse parsed-data) (- ln 200) ln)))
-                "*stock-history*"))))
-  (message "Requesting stock history..."))
+   :success handler)
+  (message (format "Requesting stock history for %s..."
+                   (propertize symbol 'face 'font-lock-keyword-face))))
+
+(defun stock-ticker--draw-history (symbol)
+  "Request stock data history for SYMBOL and draw it's cart."
+  (stock-ticker--request-history
+   symbol
+   (cl-function
+    (lambda (&key data &allow-other-keys)
+      (stock-ticker--draw-chart
+       (when data
+         (message "Updated stock")
+         (let* ((parsed-data (stock-ticker--parse-history data))
+                (ln (length parsed-data)))
+           ;; Get last 200 days data
+           (subseq (reverse parsed-data) (- ln 200) ln)))
+       "*stock-history*")))))
 
 (defun stock-ticker--next-symbol ()
   "Cycle throug the available ticker symbols and update the mode line."
@@ -356,7 +362,7 @@ the mode cycles through the requested symbols at a configurable interval."
   (let ((symbol (nth (1- (line-number-at-pos)) stock-ticker-symbols)))
     (when symbol
       (message "symbol %s" symbol)
-      (stock-ticker--history symbol))))
+      (stock-ticker--draw-history symbol))))
 
 (provide 'stock-ticker)
 ;;; stock-ticker.el ends here
