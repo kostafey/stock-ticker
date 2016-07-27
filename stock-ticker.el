@@ -1,4 +1,4 @@
-;;; stock-ticker.el --- Show stock prices in mode line
+;;; stock-ticker.el --- Show stock prices in mode line -*- lexical-binding: t
 
 ;; Copyright (C) 2015 Gunther Hagleitner
 
@@ -6,7 +6,7 @@
 ;; Version: 0.1
 ;; Keywords: comms
 ;; URL: https://github.com/hagleitn/stock-ticker
-;; Package-Requires: ((s "1.9.0") (request "0.2.0") (drawille "0.1"))
+;; Package-Requires: ((s "1.9.0") (dash "2.12.1") (request "0.2.0") (drawille "0.1"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -35,6 +35,7 @@
 (require 'json)
 (require 'request)
 (require 's)
+(require 'dash)
 (require 'cl-lib)
 (require 'timer)
 (require 'drawille)
@@ -363,6 +364,45 @@ the mode cycles through the requested symbols at a configurable interval."
     (when symbol
       (message "symbol %s" symbol)
       (stock-ticker--draw-history symbol))))
+
+;;;###autoload
+(defun stock-ticker-get-low-priced ()
+  "Search for low-priced symbols.
+Current price should not be higher by 30% of the 200-days low."
+  (interactive)
+  (switch-to-buffer "*stock-ticker*")
+  (setq-local buffer-read-only nil)
+  (erase-buffer)
+  (mapcar
+   (lambda (symbol)
+     (stock-ticker--request-history
+      symbol
+      (cl-function
+       (lambda (&key data &allow-other-keys)
+         (when data
+           (let ((parsed-data (stock-ticker--parse-history data)))
+             (if (-non-nil parsed-data)
+                 (let* ((len (length parsed-data))
+                        ;; Get last 200 days data
+                        (last-n (subseq (reverse parsed-data) (- len 200) len))
+                        (ma (apply 'max last-n))
+                        (mn (apply 'min last-n))
+                        (border (+ (* 0.3 (- ma mn)) mn))
+                        (border-up (- ma (* 0.3 (- ma mn))))
+                        (lst (car (last last-n))))
+                   (insert
+                    (format "%s: border %s value %s\n"
+                            (cond ((<= lst border)
+                                   (propertize symbol 'face 'stock-ticker--grow-face))
+                                  ((>= lst border-up)
+                                   (propertize symbol 'face 'stock-ticker--reduce-face))
+                                  (t symbol))
+                            border lst)))
+               (insert
+                (format "%s: have no history (on Yahoo finance)\n"
+                        symbol)))))))))
+   stock-ticker-symbols)
+  (message ""))
 
 (provide 'stock-ticker)
 ;;; stock-ticker.el ends here
